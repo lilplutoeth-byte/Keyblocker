@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Optional: lets the in-app toggle switch the service on/off by itself.
+         Granted once from a PC with:
+         adb shell pm grant com.example.keyblocker android.permission.WRITE_SECURE_SETTINGS -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+
     <application
-        android:label="Key Blocker"
-        android:theme="@android:style/Theme.DeviceDefault.Light">
+        android:label="bar"
+        android:icon="@drawable/ic_launcher"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
 
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
