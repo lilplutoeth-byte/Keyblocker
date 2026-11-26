@@ -1,5 +1,7 @@
 package com.example.keyblocker
 
+import android.animation.ArgbEvaluator
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -9,97 +11,82 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 
 class MainActivity : Activity() {
 
-    private val bg = Color.parseColor("#0E0E10")
-    private val card = Color.parseColor("#1A1A1F")
-    private val accent = Color.parseColor("#00E5A0")
-    private val off = Color.parseColor("#FF5C5C")
-    private val dim = Color.parseColor("#8A8A93")
+    private val bg = Color.parseColor("#0F1013")
+    private val textMain = Color.parseColor("#ECECEF")
+    private val onTrack = Color.parseColor("#6EE7B7")
+    private val offTrack = Color.parseColor("#22252C")
+    private val onThumb = Color.parseColor("#0F1013")
+    private val offThumb = Color.parseColor("#6B6F7B")
 
     private val component =
         "com.example.keyblocker/com.example.keyblocker.KeyBlockerService"
 
-    private lateinit var statusDot: TextView
-    private lateinit var statusText: TextView
-    private lateinit var toggleBtn: Button
-    private lateinit var hint: TextView
+    private lateinit var track: FrameLayout
+    private lateinit var thumb: View
+    private val trackShape = GradientDrawable()
+    private val thumbShape = GradientDrawable()
+    private lateinit var mainText: TextView
+
+    private var travel = 0
+    private var shownOn: Boolean? = null
+    private var curTrack = offTrack
+    private var curThumb = offThumb
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    private fun round(color: Int, radiusDp: Int) = GradientDrawable().apply {
-        setColor(color)
-        cornerRadius = dp(radiusDp).toFloat()
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.statusBarColor = bg
+        window.navigationBarColor = bg
+
+        val trackW = dp(248)
+        val trackH = dp(100)
+        val d = dp(76)
+        val m = dp(12)
+        travel = trackW - d - 2 * m
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
-        root.gravity = Gravity.CENTER_HORIZONTAL
+        root.gravity = Gravity.CENTER
         root.setBackgroundColor(bg)
-        root.setPadding(dp(24), dp(72), dp(24), dp(24))
+        root.setPadding(dp(28), dp(28), dp(28), dp(28))
 
-        val title = TextView(this)
-        title.text = "bar"
-        title.setTextColor(Color.WHITE)
-        title.textSize = 28f
-        title.setTypeface(null, Typeface.BOLD)
+        trackShape.cornerRadius = trackH / 2f
+        trackShape.setColor(offTrack)
+        thumbShape.shape = GradientDrawable.OVAL
+        thumbShape.setColor(offThumb)
 
-        val sub = TextView(this)
-        sub.text = "Ignores the Recent key"
-        sub.setTextColor(dim)
-        sub.textSize = 14f
-        sub.setPadding(0, dp(4), 0, dp(32))
+        track = FrameLayout(this)
+        track.background = trackShape
+        track.contentDescription = "Blocker switch"
+        track.setOnClickListener { onToggle() }
+        thumb = View(this)
+        thumb.background = thumbShape
+        val tlp = FrameLayout.LayoutParams(d, d, Gravity.CENTER_VERTICAL or Gravity.START)
+        tlp.leftMargin = m
+        track.addView(thumb, tlp)
+        root.addView(track, LinearLayout.LayoutParams(trackW, trackH))
 
-        val cardView = LinearLayout(this)
-        cardView.orientation = LinearLayout.VERTICAL
-        cardView.gravity = Gravity.CENTER_HORIZONTAL
-        cardView.background = round(card, 20)
-        cardView.setPadding(dp(24), dp(32), dp(24), dp(28))
+        mainText = TextView(this)
+        mainText.setTextColor(textMain)
+        mainText.textSize = 22f
+        mainText.letterSpacing = 0.25f
+        mainText.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        mainText.gravity = Gravity.CENTER
+        val mlp = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        mlp.topMargin = dp(44)
+        root.addView(mainText, mlp)
 
-        statusDot = TextView(this)
-        statusDot.text = "●"
-        statusDot.textSize = 40f
-        statusDot.gravity = Gravity.CENTER
-
-        statusText = TextView(this)
-        statusText.textSize = 22f
-        statusText.setTypeface(null, Typeface.BOLD)
-        statusText.gravity = Gravity.CENTER
-        statusText.setPadding(0, dp(8), 0, dp(24))
-
-        toggleBtn = Button(this)
-        toggleBtn.setTextColor(bg)
-        toggleBtn.textSize = 16f
-        toggleBtn.setTypeface(null, Typeface.BOLD)
-        toggleBtn.isAllCaps = false
-        toggleBtn.setOnClickListener { onToggle() }
-
-        cardView.addView(statusDot)
-        cardView.addView(statusText)
-        cardView.addView(
-            toggleBtn,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56))
-        )
-
-        hint = TextView(this)
-        hint.setTextColor(dim)
-        hint.textSize = 13f
-        hint.setPadding(dp(4), dp(24), dp(4), 0)
-
-        root.addView(title)
-        root.addView(sub)
-        root.addView(cardView, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        root.addView(hint)
         setContentView(root)
     }
 
@@ -121,17 +108,38 @@ class MainActivity : Activity() {
 
     private fun refresh() {
         val on = isServiceOn()
-        statusDot.setTextColor(if (on) accent else off)
-        statusText.text = if (on) "Blocker ON" else "Blocker OFF"
-        statusText.setTextColor(Color.WHITE)
-        toggleBtn.text = if (on) "Turn OFF" else "Turn ON"
-        toggleBtn.background = round(if (on) off else accent, 14)
-        hint.text = if (canToggleDirectly()) {
-            "Tip: turn it OFF before opening your bank app, then ON again."
+        val animate = shownOn != null && shownOn != on
+        applyState(on, animate)
+        shownOn = on
+    }
+
+    private fun applyState(on: Boolean, animate: Boolean) {
+        mainText.text = if (on) "BLOCKED" else "ACTIVE"
+
+        val x = if (on) travel.toFloat() else 0f
+        val toTrack = if (on) onTrack else offTrack
+        val toThumb = if (on) onThumb else offThumb
+
+        if (animate) {
+            thumb.animate().translationX(x).setDuration(240).start()
+            val fromT = curTrack
+            val fromH = curThumb
+            val a = ValueAnimator.ofFloat(0f, 1f)
+            a.duration = 240
+            a.addUpdateListener {
+                val f = it.animatedValue as Float
+                curTrack = ArgbEvaluator().evaluate(f, fromT, toTrack) as Int
+                curThumb = ArgbEvaluator().evaluate(f, fromH, toThumb) as Int
+                trackShape.setColor(curTrack)
+                thumbShape.setColor(curThumb)
+            }
+            a.start()
         } else {
-            "The button opens Accessibility settings. For a true one-tap toggle, " +
-                "grant the extra permission from a PC:\n\n" +
-                "adb shell pm grant com.example.keyblocker android.permission.WRITE_SECURE_SETTINGS"
+            thumb.translationX = x
+            curTrack = toTrack
+            curThumb = toThumb
+            trackShape.setColor(curTrack)
+            thumbShape.setColor(curThumb)
         }
     }
 
